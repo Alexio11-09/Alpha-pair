@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alpha-XMD Session</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+  .container { background: #1e293b; padding: 30px; border-radius: 12px; text-align: center; max-width: 400px; width: 90%; }
+  input { width: 100%; padding: 12px; margin: 10px 0; border: none; border-radius: 8px; font-size: 16px; }
+  button { background: #3b82f6; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; }
+  button:hover { background: #2563eb; }
+  #result { margin-top: 20px; font-size: 24px; font-weight: bold; }
+  #error { color: #ef4444; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h2>🔐 Alpha-XMD Session</h2>
+  <p>Enter your WhatsApp number (with country code)</p>
+  <input type="text" id="number" placeholder="e.g. 263786641436" />
+  <button onclick="getPairingCode()">Get Pairing Code</button>
+  <div id="result"></div>
+  <div id="error"></div>
+</div>
+
+<script type="module">
+import { makeWASocket, Browsers, useMultiFileAuthState, fetchLatestBaileysVersion } from 'https://cdn.jsdelivr.net/npm/@whiskeysockets/baileys@6.7.5/+esm';
+
+window.getPairingCode = async () => {
+  const number = document.getElementById('number').value.replace(/[^0-9]/g, '');
+  if (number.length < 10) {
+    document.getElementById('error').textContent = 'Invalid number';
+    return;
+  }
+  document.getElementById('error').textContent = '';
+  document.getElementById('result').textContent = '⏳ Generating...';
+
+  try {
+    const { state } = await useMultiFileAuthState('session-' + Date.now());
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+      auth: state,
+      version,
+      browser: Browsers.macOS('Chrome'),
+      printQRInTerminal: false,
+      logger: { level: 'silent' }
+    });
+
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Timeout')), 30000);
+      sock.ev.on('connection.update', async (update) => {
+        const { connection } = update;
+        if (connection === 'connecting' || connection === 'open') {
+          clearTimeout(timeout);
+          try {
+            const code = await sock.requestPairingCode(number);
+            document.getElementById('result').textContent = '✅ Code: ' + code;
+            sock.end();
+            resolve();
+          } catch (e) { reject(e); }
+        }
+        if (connection === 'close') {
+          clearTimeout(timeout);
+          reject(new Error('Connection closed'));
+        }
+      });
+    });
+  } catch (err) {
+    document.getElementById('error').textContent = '❌ ' + err.message;
+    document.getElementById('result').textContent = '';
+  }
+};
+</script>
+</body>
+</html>
